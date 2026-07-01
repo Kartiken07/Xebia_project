@@ -1,40 +1,44 @@
 import express from 'express';
 import { db } from '../db.js';
 import { authenticateToken, requireRole } from '../middleware/auth.js';
+import asyncHandler from '../middleware/asyncHandler.js';
+import { successResponse, errorResponse } from '../utils/responseHelper.js';
+import validate from '../middleware/validate.js';
+import { clockInSchema, clockOutSchema, correctionSchema, reviewCorrectionSchema } from '../schemas/attendance.schemas.js';
 
 const router = express.Router();
 
 // Get employee's personal attendance history
-router.get('/my', authenticateToken, (req, res) => {
+router.get('/my', authenticateToken, asyncHandler(async (req, res) => {
+  const { page = 1, limit = 50 } = req.query;
+
   if (!req.user.employeeId) {
-    return res.status(400).json({ success: false, message: 'User is not linked to any employee record.' });
+    return errorResponse(res, 'User is not linked to any employee record.', 400);
   }
-  const history = db.attendance.find({ employeeId: req.user.employeeId });
-  res.json({ success: true, attendance: history });
-});
+  const { data: history, meta } = await db.attendance.findPaginated({ employeeId: req.user.employeeId }, page, limit);
+  successResponse(res, { attendance: history, pagination: meta });
+}));
 
 // Get team attendance (Managers)
-router.get('/team', authenticateToken, requireRole(['SUPER_ADMIN', 'HR', 'MANAGER']), (req, res) => {
-  const allAttendance = db.attendance.find();
-  const allEmployees = db.employees.find();
+router.get('/team', authenticateToken, requireRole(['SUPER_ADMIN', 'HR', 'MANAGER']), asyncHandler(async (req, res) => {
+  const { page = 1, limit = 50 } = req.query;
+  const query = {};
   
-  // If user is a department manager, filter by department or direct reports
+  // If user is a department manager, filter by direct reports
   if (req.user.role === 'MANAGER') {
     const managerId = req.user.employeeId;
-    const teamEmpIds = allEmployees
-      .filter(emp => emp.reportingManager === managerId)
-      .map(emp => emp.employeeId);
-      
-    const teamAttendance = allAttendance.filter(att => teamEmpIds.includes(att.employeeId));
-    return res.json({ success: true, attendance: teamAttendance });
+    const allEmployees = await db.employees.find({ reportingManager: managerId });
+    const teamEmpIds = allEmployees.map(emp => emp.employeeId);
+    
+    query.employeeId = { $in: teamEmpIds };
   }
 
-  // HR & Admin see all
-  res.json({ success: true, attendance: allAttendance });
-});
+  const { data: attendance, meta } = await db.attendance.findPaginated(query, page, limit);
+  successResponse(res, { attendance, pagination: meta });
+}));
 
 // Clock In (FR-A01 / ATT-01)
-router.post('/clock-in', authenticateToken, (req, res) => {
+router.post('/clock-in', authenticateToken, validate(clockInSchema), async (req, res) => {
   const { latitude, longitude, isWfh, qrScanned } = req.body;
   const employeeId = req.user.employeeId;
 
@@ -45,7 +49,7 @@ router.post('/clock-in', authenticateToken, (req, res) => {
   const today = new Date().toISOString().split('T')[0];
 
   // Rule ATT-01: Only mark once per day
-  const existingRecord = db.attendance.findOne({ employeeId, date: today });
+  const existingRecord = await db.attendance.findOne({ employeeId, date: today });
   if (existingRecord) {
     return res.status(400).json({ success: false, message: 'Attendance already marked for today.' });
   }
@@ -66,7 +70,7 @@ router.post('/clock-in', authenticateToken, (req, res) => {
   const gpsLocation = latitude && longitude ? `Coordinates: ${latitude}, ${longitude}` : 'Office WiFi Location';
   const locationDetails = qrScanned ? 'Office (QR Code Scan)' : (isWfh ? `Remote (GPS: ${gpsLocation})` : 'Office Desk');
 
-  const record = db.attendance.create({
+  const record = await db.attendance.create({
     employeeId,
     date: today,
     clockIn: clockInTime,
@@ -82,14 +86,14 @@ router.post('/clock-in', authenticateToken, (req, res) => {
 });
 
 // Clock Out
-router.post('/clock-out', authenticateToken, (req, res) => {
+router.post('/clock-out', authenticateToken, validate(clockOutSchema), async (req, res) => {
   const employeeId = req.user.employeeId;
   if (!employeeId) {
     return res.status(400).json({ success: false, message: 'User is not linked to an employee profile.' });
   }
 
   const today = new Date().toISOString().split('T')[0];
-  const record = db.attendance.findOne({ employeeId, date: today });
+  const record = await db.attendance.findOne({ employeeId, date: today });
 
   if (!record) {
     return res.status(400).json({ success: false, message: 'No Clock-In record found for today.' });
@@ -123,7 +127,7 @@ router.post('/clock-out', authenticateToken, (req, res) => {
     finalStatus = 'Half Day';
   }
 
-  const updated = db.attendance.findByIdAndUpdate(record._id, {
+  const updated = await db.attendance.findByIdAndUpdate(record._id, {
     clockOut: clockOutTime,
     workingHours,
     overtime,
@@ -134,7 +138,7 @@ router.post('/clock-out', authenticateToken, (req, res) => {
 });
 
 // Raise Correction Request (ATT-04)
-router.post('/correction', authenticateToken, (req, res) => {
+router.post('/correction', authenticateToken, validate(correctionSchema), async (req, res) => {
   const { date, reason, correctedClockIn, correctedClockOut } = req.body;
   const employeeId = req.user.employeeId;
 
@@ -142,12 +146,12 @@ router.post('/correction', authenticateToken, (req, res) => {
     return res.status(400).json({ success: false, message: 'User is not linked to an employee profile.' });
   }
 
-  const record = db.attendance.findOne({ employeeId, date });
+  const record = await db.attendance.findOne({ employeeId, date });
   if (!record) {
     return res.status(404).json({ success: false, message: 'Attendance record not found for this date. Contact HR.' });
   }
 
-  const updated = db.attendance.findByIdAndUpdate(record._id, {
+  const updated = await db.attendance.findByIdAndUpdate(record._id, {
     correctionRequest: {
       reason,
       correctedClockIn,
@@ -161,11 +165,11 @@ router.post('/correction', authenticateToken, (req, res) => {
 });
 
 // Review Correction Request (Manager/HR)
-router.post('/correction/:id/review', authenticateToken, requireRole(['SUPER_ADMIN', 'HR', 'MANAGER']), (req, res) => {
+router.post('/correction/:id/review', authenticateToken, requireRole(['SUPER_ADMIN', 'HR', 'MANAGER']), validate(reviewCorrectionSchema), async (req, res) => {
   const { id } = req.params;
   const { action } = req.body; // 'Approve' or 'Reject'
 
-  const record = db.attendance.findById(id);
+  const record = await db.attendance.findById(id);
   if (!record || !record.correctionRequest) {
     return res.status(404).json({ success: false, message: 'Correction request not found.' });
   }
@@ -184,7 +188,7 @@ router.post('/correction/:id/review', authenticateToken, requireRole(['SUPER_ADM
       overtime = parseFloat((workingHours - 8.0).toFixed(2));
     }
 
-    db.attendance.findByIdAndUpdate(id, {
+    await db.attendance.findByIdAndUpdate(id, {
       clockIn: correctedClockIn,
       clockOut: correctedClockOut,
       workingHours,
@@ -200,7 +204,7 @@ router.post('/correction/:id/review', authenticateToken, requireRole(['SUPER_ADM
 
     res.json({ success: true, message: 'Attendance correction approved and updated.' });
   } else {
-    db.attendance.findByIdAndUpdate(id, {
+    await db.attendance.findByIdAndUpdate(id, {
       correctionRequest: {
         ...record.correctionRequest,
         status: 'Rejected',

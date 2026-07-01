@@ -5,11 +5,11 @@ import { authenticateToken, requireRole } from '../middleware/auth.js';
 const router = express.Router();
 
 // Get reviews (Personal or Department for Managers)
-router.get('/', authenticateToken, (req, res) => {
+router.get('/', authenticateToken, async (req, res) => {
   const isPrivileged = ['SUPER_ADMIN', 'HR'].includes(req.user.role);
   
   if (isPrivileged) {
-    const reviews = db.auditLogs.find({ action: 'Performance Review' }); // Fallback or separate table
+    const reviews = await db.auditLogs.find({ action: 'Performance Review' }); // Fallback or separate table
     // Let's create an explicit 'performance' schema in our database.json if not present
     // The collection exists in db as writeable. Let's load the performance collection.
     const performance = db.read_file ? [] : (db.dbData && db.dbData.performance ? db.dbData.performance : []);
@@ -27,7 +27,7 @@ router.get('/', authenticateToken, (req, res) => {
   }
 
   // Let's fetch all reviews from employees
-  const employees = db.employees.find();
+  const employees = await db.employees.find();
   const reviewsList = [];
   employees.forEach(emp => {
     if (emp.performanceReviews) {
@@ -60,14 +60,14 @@ router.get('/', authenticateToken, (req, res) => {
 });
 
 // Create review / Goal Setting (Manager & HR)
-router.post('/', authenticateToken, requireRole(['SUPER_ADMIN', 'HR', 'MANAGER']), (req, res) => {
+router.post('/', authenticateToken, requireRole(['SUPER_ADMIN', 'HR', 'MANAGER']), async (req, res) => {
   const { employeeId, quarter, kpiScore, managerRating, overall, feedback } = req.body;
 
   if (!employeeId || !quarter || !managerRating) {
     return res.status(400).json({ success: false, message: 'Employee, Quarter, and Rating are required' });
   }
 
-  const emp = db.employees.findOne({ employeeId });
+  const emp = await db.employees.findOne({ employeeId });
   if (!emp) {
     return res.status(404).json({ success: false, message: 'Employee not found' });
   }
@@ -85,9 +85,9 @@ router.post('/', authenticateToken, requireRole(['SUPER_ADMIN', 'HR', 'MANAGER']
   const currentReviews = emp.performanceReviews || [];
   currentReviews.push(newReview);
 
-  db.employees.findByIdAndUpdate(emp._id, { performanceReviews: currentReviews });
+  await db.employees.findByIdAndUpdate(emp._id, { performanceReviews: currentReviews });
 
-  db.auditLogs.create({
+  await db.auditLogs.create({
     userId: req.user._id,
     action: 'Performance Review',
     details: `Added review for ${emp.firstName} ${emp.lastName} for ${quarter}`,
@@ -95,7 +95,7 @@ router.post('/', authenticateToken, requireRole(['SUPER_ADMIN', 'HR', 'MANAGER']
   });
 
   // Notify employee
-  db.notifications.create({
+  await db.notifications.create({
     recipientId: employeeId,
     message: `Your manager has posted a performance review for ${quarter}. Rating: ${managerRating}/5`,
     read: false,

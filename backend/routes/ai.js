@@ -18,10 +18,10 @@ router.post('/chat', authenticateToken, async (req, res) => {
   let performance = [];
 
   if (user.employeeId) {
-    employee = db.employees.findOne({ employeeId: user.employeeId });
-    leaves = db.leaves.find({ employeeId: user.employeeId });
-    attendance = db.attendance.find({ employeeId: user.employeeId });
-    payroll = db.payroll.find({ employeeId: user.employeeId });
+    employee = await db.employees.findOne({ employeeId: user.employeeId });
+    leaves = await db.leaves.find({ employeeId: user.employeeId });
+    attendance = await db.attendance.find({ employeeId: user.employeeId });
+    payroll = await db.payroll.find({ employeeId: user.employeeId });
     
     if (employee && employee.performanceReviews) {
       performance = employee.performanceReviews;
@@ -133,24 +133,35 @@ How can I assist you today?`;
   const apiKey = customApiKey || process.env.GEMINI_API_KEY;
   if (apiKey) {
     try {
+      // 4.1 Filter and limit context to recent data only (Phase 8.1)
+      const recentLeaves = leaves.slice(-5);
+      const recentAttendance = attendance.slice(-15);
+      const recentPayroll = payroll.slice(-3);
+      const recentPerformance = performance.slice(-2);
+
       const response = await fetch(
         `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`,
         {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
-            contents: [{
+            // 4.2 Use systemInstruction to isolate trusted prompt from user input (Phase 8.2)
+            systemInstruction: {
               parts: [{
                 text: `You are an Enterprise Workforce AI Assistant. Respond in markdown.
 User Role: ${user.role}
 Employee Details: ${JSON.stringify(employee)}
-Leaves Details: ${JSON.stringify(leaves)}
-Attendance Details: ${JSON.stringify(attendance)}
-Payroll Details: ${JSON.stringify(payroll)}
-Performance Reviews: ${JSON.stringify(performance)}
-Company Policies: ${policies}
-
-User message: ${message}`
+Leaves Details: ${JSON.stringify(recentLeaves)}
+Attendance Details: ${JSON.stringify(recentAttendance)}
+Payroll Details: ${JSON.stringify(recentPayroll)}
+Performance Reviews: ${JSON.stringify(recentPerformance)}
+Company Policies: ${policies}`
+              }]
+            },
+            contents: [{
+              role: "user",
+              parts: [{
+                text: message
               }]
             }]
           })

@@ -7,25 +7,25 @@ const router = express.Router();
 const upload = multer({ dest: 'uploads/' });
 
 // Get all candidates
-router.get('/candidates', authenticateToken, (req, res) => {
-  const candidates = db.candidates.find();
+router.get('/candidates', authenticateToken, requireRole(['SUPER_ADMIN', 'HR', 'MANAGER']), async (req, res) => {
+  const candidates = await db.candidates.find();
   res.json({ success: true, candidates });
 });
 
 // Register candidate
-router.post('/candidates', authenticateToken, requireRole(['SUPER_ADMIN', 'HR']), (req, res) => {
+router.post('/candidates', authenticateToken, requireRole(['SUPER_ADMIN', 'HR']), async (req, res) => {
   const { candidateName, email, experience, skills } = req.body;
 
   if (!candidateName || !email) {
     return res.status(400).json({ success: false, message: 'Candidate Name and Email are required' });
   }
 
-  const existing = db.candidates.findOne({ email });
+  const existing = await db.candidates.findOne({ email });
   if (existing) {
     return res.status(400).json({ success: false, message: 'Candidate with this email already registered' });
   }
 
-  const cand = db.candidates.create({
+  const cand = await db.candidates.create({
     candidateName,
     email,
     experience: parseInt(experience) || 0,
@@ -41,11 +41,11 @@ router.post('/candidates', authenticateToken, requireRole(['SUPER_ADMIN', 'HR'])
 });
 
 // Update candidate details (schedule interview, post feedback, offer generation)
-router.put('/candidates/:id', authenticateToken, requireRole(['SUPER_ADMIN', 'HR', 'MANAGER']), (req, res) => {
+router.put('/candidates/:id', authenticateToken, requireRole(['SUPER_ADMIN', 'HR', 'MANAGER']), async (req, res) => {
   const { id } = req.params;
   const updateFields = req.body;
 
-  const candidate = db.candidates.findById(id);
+  const candidate = await db.candidates.findById(id);
   if (!candidate) {
     return res.status(404).json({ success: false, message: 'Candidate not found' });
   }
@@ -66,14 +66,14 @@ router.put('/candidates/:id', authenticateToken, requireRole(['SUPER_ADMIN', 'HR
     });
   }
 
-  const updated = db.candidates.findByIdAndUpdate(id, updateFields);
+  const updated = await db.candidates.findByIdAndUpdate(id, updateFields);
   res.json({ success: true, candidate: updated });
 });
 
 // AI Resume Analysis Endpoint (M-04/AI Resume Analysis)
-router.post('/candidates/:id/analyze-resume', authenticateToken, requireRole(['SUPER_ADMIN', 'HR']), (req, res) => {
+router.post('/candidates/:id/analyze-resume', authenticateToken, requireRole(['SUPER_ADMIN', 'HR']), async (req, res) => {
   const { id } = req.params;
-  const candidate = db.candidates.findById(id);
+  const candidate = await db.candidates.findById(id);
 
   if (!candidate) {
     return res.status(404).json({ success: false, message: 'Candidate not found' });
@@ -114,7 +114,7 @@ router.post('/candidates/:id/analyze-resume', authenticateToken, requireRole(['S
     }`
   };
 
-  db.candidates.findByIdAndUpdate(id, {
+  await db.candidates.findByIdAndUpdate(id, {
     aiAnalysis: analysisResult,
     status: 'Screening' // Automatically advance to screening upon resume analysis
   });

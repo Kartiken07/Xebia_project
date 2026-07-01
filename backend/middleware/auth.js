@@ -1,23 +1,21 @@
 import jwt from 'jsonwebtoken';
 import { db } from '../db.js';
+import config from '../config/index.js';
 
-const JWT_SECRET = process.env.JWT_SECRET || 'workforce-jwt-secret-key-12345';
+const JWT_SECRET = config.jwt.secret;
 
-export const authenticateToken = (req, res, next) => {
-  const authHeader = req.headers['authorization'];
-  const token = authHeader && authHeader.split(' ')[1];
+export const authenticateToken = async (req, res, next) => {
+  const token = req.cookies.accessToken;
 
   if (!token) {
     return res.status(401).json({ success: false, message: 'Access Token Required' });
   }
 
-  jwt.verify(token, JWT_SECRET, (err, user) => {
-    if (err) {
-      return res.status(403).json({ success: false, message: 'Invalid or Expired Token' });
-    }
-    
-    // Fetch latest user details from mock db to ensure they aren't locked/deleted
-    const latestUser = db.users.findById(user.userId);
+  try {
+    const decoded = jwt.verify(token, JWT_SECRET);
+
+    // Fetch latest user details from DB to ensure they aren't locked/deleted
+    const latestUser = await db.users.findById(decoded.userId);
     if (!latestUser) {
       return res.status(403).json({ success: false, message: 'User Account Not Found' });
     }
@@ -27,7 +25,9 @@ export const authenticateToken = (req, res, next) => {
 
     req.user = latestUser;
     next();
-  });
+  } catch (err) {
+    return res.status(403).json({ success: false, message: 'Invalid or Expired Token' });
+  }
 };
 
 export const requireRole = (allowedRoles) => {

@@ -18,4 +18,4 @@ A centralized, enterprise-grade web platform designed to manage the entire emplo
 9. **AI Operations Assistant**: Persistent HR policy assistant, resume analyzer, and performance advisor.
 
 ## Development Roadmap
-Refer to [implementation_plan.md](file:///C:/Users/satvi/.gemini/antigravity-ide/brain/6c662780-fb11-4226-bc42-1af39f9ca258/implementation_plan.md) for the detailed 10-day engineering timeline.
+Refer to for the detailed 10-day engineering timeline.

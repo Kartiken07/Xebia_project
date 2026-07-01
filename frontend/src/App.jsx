@@ -10,6 +10,22 @@ import {
   Tooltip, BarChart, Bar, Legend, PieChart, Pie, Cell 
 } from 'recharts';
 
+import Auth from './components/Auth';
+import Sidebar from './components/Sidebar';
+import AiAssistant from './components/AiAssistant';
+import DashboardOverview from './components/DashboardOverview';
+
+import { Routes, Route, useLocation } from 'react-router-dom';
+import EmployeesPage from './pages/EmployeesPage';
+import RecruitmentPage from './pages/RecruitmentPage';
+import AttendancePage from './pages/AttendancePage';
+import LeavePage from './pages/LeavePage';
+import PayrollPage from './pages/PayrollPage';
+import ProjectsPage from './pages/ProjectsPage';
+import AssetsPage from './pages/AssetsPage';
+import TicketsPage from './pages/TicketsPage';
+import SettingsPage from './pages/SettingsPage';
+
 const API_BASE = ''; // Uses Vite proxy (direct calls to /api)
 
 // Helper to format currency
@@ -17,13 +33,15 @@ const formatCurrency = (val) => new Intl.NumberFormat('en-IN', { style: 'currenc
 
 export default function App() {
   // Navigation & User State
-  const [token, setToken] = useState(localStorage.getItem('token') || '');
+  const [isAuthenticated, setIsAuthenticated] = useState(localStorage.getItem('isAuthenticated') === 'true');
   const [userRole, setUserRole] = useState(localStorage.getItem('role') || '');
   const [userId, setUserId] = useState(localStorage.getItem('userId') || '');
   const [empId, setEmpId] = useState(localStorage.getItem('employeeId') || '');
   const [userName, setUserName] = useState(localStorage.getItem('name') || '');
   
-  const [currentTab, setCurrentTab] = useState('overview');
+  const location = useLocation();
+  const currentTab = location.pathname === '/' ? 'overview' : location.pathname.substring(1).split('/')[0];
+
   const [notifications, setNotifications] = useState([]);
   const [showNotifications, setShowNotifications] = useState(false);
 
@@ -96,10 +114,10 @@ export default function App() {
 
   // Load App Data on Login
   useEffect(() => {
-    if (token) {
+    if (isAuthenticated) {
       fetchDashboardData();
     }
-  }, [token]);
+  }, [isAuthenticated]);
 
   // Scroll AI Chat to Bottom
   useEffect(() => {
@@ -109,13 +127,34 @@ export default function App() {
   const apiFetch = async (url, options = {}) => {
     const headers = {
       'Content-Type': 'application/json',
-      ...(token ? { 'Authorization': `Bearer ${token}` } : {}),
       ...options.headers
     };
+    const fetchOptions = {
+      ...options,
+      headers,
+      credentials: 'include' // Crucial for HttpOnly cookies
+    };
     try {
-      const res = await fetch(`${API_BASE}${url}`, { ...options, headers });
+      const res = await fetch(`${API_BASE}${url}`, fetchOptions);
       const data = await res.json();
       if (!res.ok) {
+        if (res.status === 401 && url !== '/api/auth/login' && url !== '/api/auth/refresh') {
+          // Attempt refresh
+          try {
+            const refreshRes = await fetch(`${API_BASE}/api/auth/refresh`, { method: 'POST', credentials: 'include' });
+            if (refreshRes.ok) {
+              // Retry original request
+              const retryRes = await fetch(`${API_BASE}${url}`, fetchOptions);
+              const retryData = await retryRes.json();
+              if (!retryRes.ok) throw new Error(retryData.message || 'Something went wrong');
+              return retryData;
+            }
+          } catch (e) {
+            // Refresh failed, logout
+            handleLogout();
+            throw new Error('Session expired');
+          }
+        }
         throw new Error(data.message || 'Something went wrong');
       }
       return data;
@@ -127,45 +166,31 @@ export default function App() {
 
   const fetchDashboardData = async () => {
     try {
-      // Departments
-      const depRes = await apiFetch('/api/organization/departments');
-      if (depRes.success) setDepartments(depRes.departments);
+      const [
+        depRes, empRes, candRes, attRes, lvRes, payRes, projRes, tskRes, assetRes, tktRes
+      ] = await Promise.allSettled([
+        apiFetch('/api/organization/departments'),
+        apiFetch('/api/employees'),
+        apiFetch('/api/recruitment/candidates'),
+        apiFetch('/api/attendance/my'),
+        apiFetch('/api/leaves/my'),
+        apiFetch('/api/payroll/history'),
+        apiFetch('/api/projects'),
+        apiFetch('/api/projects/tasks'),
+        apiFetch('/api/assets'),
+        apiFetch('/api/tickets')
+      ]);
 
-      // Employees
-      const empRes = await apiFetch('/api/employees');
-      if (empRes.success) setEmployees(empRes.employees);
-
-      // Candidates
-      const candRes = await apiFetch('/api/recruitment/candidates');
-      if (candRes.success) setCandidates(candRes.candidates);
-
-      // Attendance
-      const attRes = await apiFetch('/api/attendance/my');
-      if (attRes.success) setAttendance(attRes.attendance);
-
-      // Leaves
-      const lvRes = await apiFetch('/api/leaves/my');
-      if (lvRes.success) setLeaves(lvRes.history || []);
-
-      // Payroll
-      const payRes = await apiFetch('/api/payroll/history');
-      if (payRes.success) setPayroll(payRes.payrolls);
-
-      // Projects
-      const projRes = await apiFetch('/api/projects');
-      if (projRes.success) setProjects(projRes.projects);
-
-      // Tasks
-      const tskRes = await apiFetch('/api/projects/tasks');
-      if (tskRes.success) setTasks(tskRes.tasks);
-
-      // Assets
-      const assetRes = await apiFetch('/api/assets');
-      if (assetRes.success) setAssets(assetRes.assets);
-
-      // Tickets
-      const tktRes = await apiFetch('/api/tickets');
-      if (tktRes.success) setTickets(tktRes.tickets);
+      if (depRes.status === 'fulfilled' && depRes.value.success) setDepartments(depRes.value.departments);
+      if (empRes.status === 'fulfilled' && empRes.value.success) setEmployees(empRes.value.employees);
+      if (candRes.status === 'fulfilled' && candRes.value.success) setCandidates(candRes.value.candidates);
+      if (attRes.status === 'fulfilled' && attRes.value.success) setAttendance(attRes.value.attendance);
+      if (lvRes.status === 'fulfilled' && lvRes.value.success) setLeaves(lvRes.value.history || []);
+      if (payRes.status === 'fulfilled' && payRes.value.success) setPayroll(payRes.value.payrolls);
+      if (projRes.status === 'fulfilled' && projRes.value.success) setProjects(projRes.value.projects);
+      if (tskRes.status === 'fulfilled' && tskRes.value.success) setTasks(tskRes.value.tasks);
+      if (assetRes.status === 'fulfilled' && assetRes.value.success) setAssets(assetRes.value.assets);
+      if (tktRes.status === 'fulfilled' && tktRes.value.success) setTickets(tktRes.value.tickets);
     } catch (err) {
       console.warn("Failed to contact backend API. App running with mock simulation data.");
       loadFallbackMockData();
@@ -223,13 +248,13 @@ export default function App() {
       });
 
       if (data.success) {
-        localStorage.setItem('token', data.token);
+        localStorage.setItem('isAuthenticated', 'true');
         localStorage.setItem('role', data.role);
         localStorage.setItem('userId', data.userId);
         localStorage.setItem('employeeId', data.employeeId || '');
         localStorage.setItem('name', data.name);
 
-        setToken(data.token);
+        setIsAuthenticated(true);
         setUserRole(data.role);
         setUserId(data.userId);
         setEmpId(data.employeeId || '');
@@ -242,9 +267,14 @@ export default function App() {
     }
   };
 
-  const handleLogout = () => {
+  const handleLogout = async () => {
+    try {
+      await apiFetch('/api/auth/logout', { method: 'POST' });
+    } catch (err) {
+      console.error('Logout error:', err);
+    }
     localStorage.clear();
-    setToken('');
+    setIsAuthenticated(false);
     setUserRole('');
     setUserId('');
     setEmpId('');
@@ -489,57 +519,17 @@ export default function App() {
   };
 
   // Auth UI Rendering if not logged in
-  if (!token) {
+  if (!isAuthenticated) {
     return (
-      <div className="auth-container">
-        <div className="auth-box glass-card">
-          <div className="auth-header">
-            <div className="auth-logo">
-              <Globe className="text-primary" size={32} />
-              <span>WORKFORCE</span>
-            </div>
-            <p className="page-subtitle">Enterprise Lifecycle Platform with Operations AI</p>
-          </div>
-
-          <form onSubmit={handleLogin}>
-            <div className="form-group">
-              <label className="form-label">Corporate Email</label>
-              <input 
-                type="email" 
-                className="form-input" 
-                value={loginEmail} 
-                onChange={(e) => setLoginEmail(e.target.value)} 
-                required 
-              />
-            </div>
-            <div className="form-group">
-              <label className="form-label">Password</label>
-              <input 
-                type="password" 
-                className="form-input" 
-                value={loginPassword} 
-                onChange={(e) => setLoginPassword(e.target.value)} 
-                required 
-              />
-            </div>
-
-            {authError && <div style={{ color: 'var(--danger)', fontSize: '13px', marginBottom: '15px' }}><AlertTriangle size={14} style={{ display: 'inline', marginRight: '6px' }} />{authError}</div>}
-            {authSuccess && <div style={{ color: 'var(--secondary)', fontSize: '13px', marginBottom: '15px' }}><CheckCircle2 size={14} style={{ display: 'inline', marginRight: '6px' }} />{authSuccess}</div>}
-
-            <button type="submit" className="btn btn-primary" style={{ marginTop: '10px' }}>Sign In</button>
-          </form>
-
-          <div style={{ marginTop: '24px', textAlign: 'center', fontSize: '12px', color: 'var(--text-secondary)' }}>
-            <p>Demo Logins (Password criteria: Uppercase, Lowercase, Special Char, Number):</p>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', marginTop: '10px', textAlign: 'left', background: 'rgba(0,0,0,0.2)', padding: '10px', borderRadius: '6px' }}>
-              <code>SuperAdmin: admin@company.com / Admin@123</code>
-              <code>HR Manager: hr@company.com / HrManager@123</code>
-              <code>Team Lead/Manager: manager@company.com / Manager@123</code>
-              <code>Employee: employee@company.com / Employee@123</code>
-            </div>
-          </div>
-        </div>
-      </div>
+      <Auth 
+        handleLogin={handleLogin}
+        loginEmail={loginEmail}
+        setLoginEmail={setLoginEmail}
+        loginPassword={loginPassword}
+        setLoginPassword={setLoginPassword}
+        authError={authError}
+        authSuccess={authSuccess}
+      />
     );
   }
 
@@ -547,68 +537,11 @@ export default function App() {
   return (
     <div className="dashboard-layout">
       {/* Sidebar Navigation */}
-      <aside className="sidebar">
-        <div className="sidebar-logo">
-          <Globe className="text-primary" size={24} />
-          <span>WORKFORCE</span>
-        </div>
-        
-        <nav className="sidebar-menu">
-          <div className="sidebar-item" onClick={() => setCurrentTab('overview')}>
-            <BarChart3 size={18} /> Overview
-          </div>
-          
-          {/* RBAC Sidebar display limits */}
-          {['SUPER_ADMIN', 'HR'].includes(userRole) && (
-            <div className="sidebar-item" onClick={() => setCurrentTab('employees')}>
-              <Users size={18} /> Employee Directory
-            </div>
-          )}
-
-          {['SUPER_ADMIN', 'HR', 'MANAGER'].includes(userRole) && (
-            <div className="sidebar-item" onClick={() => setCurrentTab('recruitment')}>
-              <Briefcase size={18} /> Recruitment Hub
-            </div>
-          )}
-
-          <div className="sidebar-item" onClick={() => setCurrentTab('attendance')}>
-            <Clock size={18} /> Attendance Logs
-          </div>
-
-          <div className="sidebar-item" onClick={() => setCurrentTab('leaves')}>
-            <Calendar size={18} /> Leave Center
-          </div>
-
-          <div className="sidebar-item" onClick={() => setCurrentTab('payroll')}>
-            <DollarSign size={18} /> Payroll Slips
-          </div>
-
-          <div className="sidebar-item" onClick={() => setCurrentTab('projects')}>
-            <Award size={18} /> Projects & Tasks
-          </div>
-
-          <div className="sidebar-item" onClick={() => setCurrentTab('assets')}>
-            <Laptop size={18} /> IT Assets
-          </div>
-
-          <div className="sidebar-item" onClick={() => setCurrentTab('tickets')}>
-            <HelpCircle size={18} /> Help Desk
-          </div>
-        </nav>
-
-        <div className="sidebar-footer">
-          <div className="user-badge">
-            <div className="user-avatar">{userName[0]}</div>
-            <div className="user-info">
-              <span className="user-name">{userName}</span>
-              <span className="user-role">{userRole.replace('_', ' ')}</span>
-            </div>
-          </div>
-          <button className="logout-btn" onClick={handleLogout} title="Log Out">
-            <LogOut size={16} />
-          </button>
-        </div>
-      </aside>
+      <Sidebar 
+        userRole={userRole}
+        userName={userName}
+        handleLogout={handleLogout}
+      />
 
       {/* Main panel content */}
       <main className="main-wrapper">
@@ -659,802 +592,82 @@ export default function App() {
           </div>
         </header>
 
-        {/* Tab contents router */}
-        {currentTab === 'overview' && (
-          <div style={{ animation: 'fadeIn 0.3s ease-out' }}>
-            <div className="metrics-grid">
-              <div className="glass-card metric-card">
-                <div>
-                  <div className="metric-label">Active Employees</div>
-                  <div className="metric-val">{employees.length}</div>
-                </div>
-                <div className="metric-icon-box" style={{ background: 'var(--primary-glow)', color: 'var(--primary)' }}>
-                  <Users size={20} />
-                </div>
-              </div>
-              <div className="glass-card metric-card">
-                <div>
-                  <div className="metric-label">Active Projects</div>
-                  <div className="metric-val">{projects.length}</div>
-                </div>
-                <div className="metric-icon-box" style={{ background: 'var(--secondary-glow)', color: 'var(--secondary)' }}>
-                  <Briefcase size={20} />
-                </div>
-              </div>
-              <div className="glass-card metric-card">
-                <div>
-                  <div className="metric-label">Leaves Taken</div>
-                  <div className="metric-val">{leaves.filter(l => l.status === 'Approved').length}</div>
-                </div>
-                <div className="metric-icon-box" style={{ background: 'rgba(245,158,11,0.15)', color: 'var(--warning)' }}>
-                  <Calendar size={20} />
-                </div>
-              </div>
-              <div className="glass-card metric-card">
-                <div>
-                  <div className="metric-label">IT Assets Assigned</div>
-                  <div className="metric-val">{assets.filter(a => a.status === 'Assigned').length}</div>
-                </div>
-                <div className="metric-icon-box" style={{ background: 'rgba(6,182,212,0.15)', color: 'var(--info)' }}>
-                  <Laptop size={20} />
-                </div>
-              </div>
-            </div>
+        <Routes>
+          <Route path="/" element={
+            <DashboardOverview 
+              employees={employees} projects={projects} leaves={leaves}
+              assets={assets} tasks={tasks} gpsSimulated={gpsSimulated}
+              setGpsSimulated={setGpsSimulated} qrSimulated={qrSimulated}
+              setQrSimulated={setQrSimulated} handleClockIn={handleClockIn}
+              handleClockOut={handleClockOut}
+            />
+          } />
+          
+          <Route path="/employees" element={
+            <EmployeesPage 
+              userRole={userRole} employees={employees} departments={departments}
+              showAddEmp={showAddEmp} setShowAddEmp={setShowAddEmp}
+              newEmpData={newEmpData} setNewEmpData={setNewEmpData}
+              handleCreateEmp={handleCreateEmp}
+            />
+          } />
 
-            {/* Dashboard Graphs Layout */}
-            <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr', gap: '20px', marginBottom: '30px' }}>
-              <div className="glass-card">
-                <h3 style={{ marginBottom: '20px' }}>Organization Growth & Workloads</h3>
-                <div style={{ width: '100%', height: 280 }}>
-                  <ResponsiveContainer>
-                    <AreaChart data={[
-                      { name: 'Jan', Employees: 10, Tasks: 15 },
-                      { name: 'Feb', Employees: 12, Tasks: 24 },
-                      { name: 'Mar', Employees: 15, Tasks: 32 },
-                      { name: 'Apr', Employees: 18, Tasks: 45 },
-                      { name: 'May', Employees: 22, Tasks: 50 },
-                      { name: 'Jun', Employees: employees.length || 24, Tasks: tasks.length || 65 }
-                    ]}>
-                      <defs>
-                        <linearGradient id="colorEmp" x1="0" y1="0" x2="0" y2="1">
-                          <stop offset="5%" stopColor="var(--primary)" stopOpacity={0.4}/>
-                          <stop offset="95%" stopColor="var(--primary)" stopOpacity={0}/>
-                        </linearGradient>
-                        <linearGradient id="colorTsk" x1="0" y1="0" x2="0" y2="1">
-                          <stop offset="5%" stopColor="var(--secondary)" stopOpacity={0.4}/>
-                          <stop offset="95%" stopColor="var(--secondary)" stopOpacity={0}/>
-                        </linearGradient>
-                      </defs>
-                      <XAxis dataKey="name" stroke="var(--text-secondary)" />
-                      <YAxis stroke="var(--text-secondary)" />
-                      <Tooltip contentStyle={{ background: 'var(--bg-sidebar)', borderColor: 'var(--border-glass)' }} />
-                      <Area type="monotone" dataKey="Employees" stroke="var(--primary)" fillOpacity={1} fill="url(#colorEmp)" />
-                      <Area type="monotone" dataKey="Tasks" stroke="var(--secondary)" fillOpacity={1} fill="url(#colorTsk)" />
-                    </AreaChart>
-                  </ResponsiveContainer>
-                </div>
-              </div>
+          <Route path="/recruitment" element={
+            <RecruitmentPage 
+              candidates={candidates} showAddCand={showAddCand}
+              setShowAddCand={setShowAddCand} newCandData={newCandData}
+              setNewCandData={setNewCandData} handleCreateCand={handleCreateCand}
+              handleResumeAnalysis={handleResumeAnalysis}
+            />
+          } />
 
-              <div className="glass-card">
-                <h3 style={{ marginBottom: '20px' }}>Quick Self Clock-In</h3>
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '13px', background: 'rgba(255,255,255,0.03)', padding: '10px', borderRadius: '6px' }}>
-                    <span>Simulate GPS Mode</span>
-                    <button 
-                      className={`badge ${gpsSimulated ? 'badge-success' : 'badge-danger'}`}
-                      onClick={() => setGpsSimulated(!gpsSimulated)}
-                      style={{ border: 'none', cursor: 'pointer' }}
-                    >
-                      {gpsSimulated ? 'Enabled' : 'Disabled'}
-                    </button>
-                  </div>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '13px', background: 'rgba(255,255,255,0.03)', padding: '10px', borderRadius: '6px' }}>
-                    <span>Simulate Office QR Scan</span>
-                    <button 
-                      className={`badge ${qrSimulated ? 'badge-success' : 'badge-danger'}`}
-                      onClick={() => setQrSimulated(!qrSimulated)}
-                      style={{ border: 'none', cursor: 'pointer' }}
-                    >
-                      {qrSimulated ? 'Enabled' : 'Disabled'}
-                    </button>
-                  </div>
-
-                  <div style={{ display: 'flex', gap: '10px', marginTop: '10px' }}>
-                    <button className="btn btn-primary" onClick={() => handleClockIn(false)}>
-                      <MapPin size={16} /> Office Clock-In
-                    </button>
-                    <button className="btn btn-secondary" onClick={() => handleClockIn(true)}>
-                      <Globe size={16} /> WFH Clock-In
-                    </button>
-                  </div>
-                  <button className="btn btn-secondary" style={{ borderColor: 'var(--danger-glow)', color: 'var(--danger)' }} onClick={handleClockOut}>
-                    <LogOut size={16} /> Clock-Out Daily Shift
-                  </button>
-                </div>
-              </div>
-            </div>
-          </div>
-        )}
-
-        {currentTab === 'employees' && (
-          <div className="glass-card" style={{ animation: 'fadeIn 0.3s ease-out' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
-              <h3>Active Workforce Profile Catalog</h3>
-              {['SUPER_ADMIN', 'HR'].includes(userRole) && (
-                <button className="btn btn-primary" style={{ width: 'auto' }} onClick={() => setShowAddEmp(true)}>
-                  <Plus size={16} /> Register Employee
-                </button>
-              )}
-            </div>
-
-            {showAddEmp && (
-              <form onSubmit={handleCreateEmp} className="glass-card" style={{ marginBottom: '24px', border: '1px solid var(--border-glass-active)' }}>
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px', marginBottom: '20px' }}>
-                  <div className="form-group">
-                    <label className="form-label">First Name</label>
-                    <input type="text" className="form-input" required onChange={e => setNewEmpData({...newEmpData, firstName: e.target.value})} />
-                  </div>
-                  <div className="form-group">
-                    <label className="form-label">Last Name</label>
-                    <input type="text" className="form-input" required onChange={e => setNewEmpData({...newEmpData, lastName: e.target.value})} />
-                  </div>
-                  <div className="form-group">
-                    <label className="form-label">Email</label>
-                    <input type="email" className="form-input" required onChange={e => setNewEmpData({...newEmpData, email: e.target.value})} />
-                  </div>
-                  <div className="form-group">
-                    <label className="form-label">Department</label>
-                    <select className="form-input" onChange={e => setNewEmpData({...newEmpData, department: e.target.value})}>
-                      <option value="">Select Dept</option>
-                      {departments.map(d => <option key={d._id} value={d.departmentName}>{d.departmentName}</option>)}
-                    </select>
-                  </div>
-                  <div className="form-group">
-                    <label className="form-label">Designation</label>
-                    <input type="text" className="form-input" required onChange={e => setNewEmpData({...newEmpData, designation: e.target.value})} />
-                  </div>
-                  <div className="form-group">
-                    <label className="form-label">Joining Date</label>
-                    <input type="date" className="form-input" required onChange={e => setNewEmpData({...newEmpData, joiningDate: e.target.value})} />
-                  </div>
-                  <div className="form-group">
-                    <label className="form-label">Basic Monthly Salary (Rs.)</label>
-                    <input type="number" className="form-input" required onChange={e => setNewEmpData({...newEmpData, basicSalary: parseFloat(e.target.value)})} />
-                  </div>
-                  <div className="form-group">
-                    <label className="form-label">HRA Allowance (Rs.)</label>
-                    <input type="number" className="form-input" required onChange={e => setNewEmpData({...newEmpData, hra: parseFloat(e.target.value)})} />
-                  </div>
-                </div>
-                <div style={{ display: 'flex', gap: '10px', justifyContent: 'flex-end' }}>
-                  <button type="button" className="btn btn-secondary" style={{ width: 'auto' }} onClick={() => setShowAddEmp(false)}>Cancel</button>
-                  <button type="submit" className="btn btn-primary" style={{ width: 'auto' }}>Submit Registration</button>
-                </div>
-              </form>
-            )}
-
-            <div className="table-container">
-              <table className="data-table">
-                <thead>
-                  <tr>
-                    <th>Emp ID</th>
-                    <th>Name</th>
-                    <th>Email</th>
-                    <th>Department</th>
-                    <th>Designation</th>
-                    <th>Salary Grade</th>
-                    <th>Status</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {employees.map(emp => (
-                    <tr key={emp._id}>
-                      <td><code>{emp.employeeId}</code></td>
-                      <td>{emp.firstName} {emp.lastName}</td>
-                      <td>{emp.email}</td>
-                      <td>{emp.department}</td>
-                      <td>{emp.designation}</td>
-                      <td>{emp.salaryGrade}</td>
-                      <td><span className="badge badge-success">{emp.status}</span></td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </div>
-        )}
-
-        {currentTab === 'recruitment' && (
-          <div className="glass-card" style={{ animation: 'fadeIn 0.3s ease-out' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
-              <h3>Hiring Pipeline & AI Resume Analyzer</h3>
-              <button className="btn btn-primary" style={{ width: 'auto' }} onClick={() => setShowAddCand(true)}>
-                <Plus size={16} /> New Application
-              </button>
-            </div>
-
-            {showAddCand && (
-              <form onSubmit={handleCreateCand} className="glass-card" style={{ marginBottom: '24px', border: '1px solid var(--border-glass-active)' }}>
-                <div style={{ display: 'grid', gridTemplateColumns: '1.5fr 1fr', gap: '16px', marginBottom: '20px' }}>
-                  <div className="form-group">
-                    <label className="form-label">Candidate Name</label>
-                    <input type="text" className="form-input" required onChange={e => setNewCandData({...newCandData, candidateName: e.target.value})} />
-                  </div>
-                  <div className="form-group">
-                    <label className="form-label">Email</label>
-                    <input type="email" className="form-input" required onChange={e => setNewCandData({...newCandData, email: e.target.value})} />
-                  </div>
-                  <div className="form-group">
-                    <label className="form-label">Years of Experience</label>
-                    <input type="number" className="form-input" required onChange={e => setNewCandData({...newCandData, experience: parseInt(e.target.value)})} />
-                  </div>
-                  <div className="form-group">
-                    <label className="form-label">Key Skills (Comma separated)</label>
-                    <input type="text" className="form-input" placeholder="React, Node, MongoDB" required onChange={e => setNewCandData({...newCandData, skills: e.target.value})} />
-                  </div>
-                </div>
-                <div style={{ display: 'flex', gap: '10px', justifyContent: 'flex-end' }}>
-                  <button type="button" className="btn btn-secondary" style={{ width: 'auto' }} onClick={() => setShowAddCand(false)}>Cancel</button>
-                  <button type="submit" className="btn btn-primary" style={{ width: 'auto' }}>Add Candidate</button>
-                </div>
-              </form>
-            )}
-
-            <div className="table-container">
-              <table className="data-table">
-                <thead>
-                  <tr>
-                    <th>Candidate</th>
-                    <th>Email</th>
-                    <th>Experience</th>
-                    <th>Skills Match</th>
-                    <th>Pipeline Status</th>
-                    <th>AI Parse Score</th>
-                    <th>Actions</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {candidates.map(cand => (
-                    <tr key={cand._id}>
-                      <td><strong>{cand.candidateName}</strong></td>
-                      <td>{cand.email}</td>
-                      <td>{cand.experience} Years</td>
-                      <td>
-                        <div style={{ display: 'flex', gap: '4px', flexWrap: 'wrap' }}>
-                          {cand.skills.map((s, i) => <span key={i} className="badge badge-info" style={{ fontSize: '9px', padding: '2px 6px' }}>{s}</span>)}
-                        </div>
-                      </td>
-                      <td><span className="badge badge-warning">{cand.status}</span></td>
-                      <td>
-                        {cand.aiAnalysis ? (
-                          <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                            <span style={{ fontWeight: 'bold', color: 'var(--secondary)' }}>{cand.aiAnalysis.score}</span>
-                            <span style={{ fontSize: '10px', color: 'var(--text-secondary)' }}>Matching</span>
-                          </div>
-                        ) : (
-                          <span style={{ fontSize: '11px', color: 'var(--text-muted)' }}>Not Analyzed</span>
-                        )}
-                      </td>
-                      <td>
-                        <div style={{ display: 'flex', gap: '6px' }}>
-                          <button 
-                            className="btn btn-secondary" 
-                            style={{ padding: '6px 12px', fontSize: '11px', width: 'auto' }}
-                            onClick={() => handleResumeAnalysis(cand._id)}
-                          >
-                            <Bot size={13} style={{ marginRight: '4px' }} /> Run AI Parser
-                          </button>
-                        </div>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </div>
-        )}
-
-        {currentTab === 'attendance' && (
-          <div className="glass-card" style={{ animation: 'fadeIn 0.3s ease-out' }}>
-            <h3 style={{ marginBottom: '20px' }}>Your Shift Attendance Log</h3>
-            <div className="table-container">
-              <table className="data-table">
-                <thead>
-                  <tr>
-                    <th>Date</th>
-                    <th>Clock In</th>
-                    <th>Clock Out</th>
-                    <th>Working Hours</th>
-                    <th>Overtime (Hrs)</th>
-                    <th>Verification Mode</th>
-                    <th>Status</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {attendance.map(att => (
-                    <tr key={att._id}>
-                      <td>{att.date}</td>
-                      <td><code>{att.clockIn}</code></td>
-                      <td><code>{att.clockOut || '--:--'}</code></td>
-                      <td>{att.workingHours} Hours</td>
-                      <td>{att.overtime} Hours</td>
-                      <td><span style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>{att.location || 'Browser Verified'}</span></td>
-                      <td>
-                        <span className={`badge ${att.status === 'Present' || att.status === 'Work From Home' ? 'badge-success' : 'badge-warning'}`}>
-                          {att.status}
-                        </span>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </div>
-        )}
-
-        {currentTab === 'leaves' && (
-          <div style={{ animation: 'fadeIn 0.3s ease-out' }}>
-            <div className="metrics-grid">
-              <div className="glass-card">
-                <div className="metric-label">Casual Leaves</div>
-                <div className="metric-val">12 Days</div>
-                <p style={{ fontSize: '11px', color: 'var(--text-secondary)', marginTop: '4px' }}>Standard Annual balance</p>
-              </div>
-              <div className="glass-card">
-                <div className="metric-label">Sick Leaves</div>
-                <div className="metric-val">10 Days</div>
-                <p style={{ fontSize: '11px', color: 'var(--text-secondary)', marginTop: '4px' }}>Standard medical balance</p>
-              </div>
-              <div className="glass-card">
-                <div className="metric-label">Earned Leaves</div>
-                <div className="metric-val">15 Days</div>
-                <p style={{ fontSize: '11px', color: 'var(--text-secondary)', marginTop: '4px' }}>Privilege carry forward balance</p>
-              </div>
-            </div>
-
-            <div className="glass-card">
-              <h3 style={{ marginBottom: '20px' }}>Submit Leave Request</h3>
-              <div style={{ display: 'flex', gap: '20px' }}>
-                <form style={{ flex: 1 }} onSubmit={async (e) => {
-                  e.preventDefault();
-                  const fd = new FormData(e.target);
-                  try {
-                    const data = await apiFetch('/api/leaves/apply', {
-                      method: 'POST',
-                      body: JSON.stringify({
-                        leaveType: fd.get('leaveType'),
-                        startDate: fd.get('startDate'),
-                        endDate: fd.get('endDate'),
-                        reason: fd.get('reason')
-                      })
-                    });
-                    if (data.success) {
-                      alert('Leave application submitted!');
-                      fetchDashboardData();
-                      e.target.reset();
-                    }
-                  } catch (err) {
-                    alert(err.message);
-                  }
-                }}>
-                  <div className="form-group">
-                    <label className="form-label">Leave Type</label>
-                    <select name="leaveType" className="form-input" required>
-                      <option value="Casual Leave">Casual Leave</option>
-                      <option value="Sick Leave">Sick Leave</option>
-                      <option value="Earned Leave">Earned Leave</option>
-                    </select>
-                  </div>
-                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px', marginBottom: '20px' }}>
-                    <div className="form-group">
-                      <label className="form-label">Start Date</label>
-                      <input type="date" name="startDate" className="form-input" required />
-                    </div>
-                    <div className="form-group">
-                      <label className="form-label">End Date</label>
-                      <input type="date" name="endDate" className="form-input" required />
-                    </div>
-                  </div>
-                  <div className="form-group">
-                    <label className="form-label">Reason for Leave</label>
-                    <textarea name="reason" className="form-input" style={{ minHeight: '80px' }} required></textarea>
-                  </div>
-                  <button type="submit" className="btn btn-primary">Apply Leave</button>
-                </form>
-
-                <div style={{ flex: 1.2 }}>
-                  <h4 style={{ marginBottom: '14px' }}>My Applied History</h4>
-                  <div className="table-container">
-                    <table className="data-table">
-                      <thead>
-                        <tr>
-                          <th>Leave Type</th>
-                          <th>Dates</th>
-                          <th>Status</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {leaves.map((l, i) => (
-                          <tr key={i}>
-                            <td>{l.leaveType}</td>
-                            <td>{l.startDate} to {l.endDate}</td>
-                            <td><span className={`badge ${l.status === 'Approved' ? 'badge-success' : 'badge-warning'}`}>{l.status}</span></td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-                </div>
-              </div>
-            </div>
-          </div>
-        )}
-
-        {currentTab === 'payroll' && (
-          <div className="glass-card" style={{ animation: 'fadeIn 0.3s ease-out' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
-              <h3>Payslip History & Allowances</h3>
-              {['SUPER_ADMIN', 'HR', 'FINANCE'].includes(userRole) && (
-                <button className="btn btn-primary" style={{ width: 'auto' }} onClick={handleRunPayroll}>
-                  <DollarSign size={16} /> Run Monthly Payroll
-                </button>
-              )}
-            </div>
-
-            <div className="table-container">
-              <table className="data-table">
-                <thead>
-                  <tr>
-                    <th>Month</th>
-                    <th>Basic (Rs.)</th>
-                    <th>HRA (Rs.)</th>
-                    <th>Bonus (Rs.)</th>
-                    <th>Overtime (Rs.)</th>
-                    <th>Deductions</th>
-                    <th>Net Payout (Rs.)</th>
-                    <th>Status</th>
-                    <th>Payslip Doc</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {payroll.map(pay => (
-                    <tr key={pay._id}>
-                      <td>{pay.month}</td>
-                      <td>{formatCurrency(pay.basicSalary)}</td>
-                      <td>{formatCurrency(pay.hra)}</td>
-                      <td>{formatCurrency(pay.bonus)}</td>
-                      <td>{formatCurrency(pay.overtime)}</td>
-                      <td>-{formatCurrency(pay.deductions)}</td>
-                      <td><strong>{formatCurrency(pay.netSalary)}</strong></td>
-                      <td><span className="badge badge-success">{pay.status}</span></td>
-                      <td>
-                        <button className="btn btn-secondary" style={{ padding: '6px 12px', fontSize: '11px', width: 'auto' }} onClick={() => {
-                          alert(`Downloading Payslip for ${pay.month}\nEmployee: ${userName}\nNet take-home: ${formatCurrency(pay.netSalary)}`);
-                        }}>
-                          <FileText size={13} style={{ marginRight: '4px' }} /> Download
-                        </button>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </div>
-        )}
-
-        {currentTab === 'projects' && (
-          <div style={{ animation: 'fadeIn 0.3s ease-out' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
-              <h3>Task Boards & Sprint Management</h3>
-              <div style={{ display: 'flex', gap: '10px' }}>
-                <button className="btn btn-secondary" style={{ width: 'auto' }} onClick={() => setShowAddProj(true)}>
-                  <Plus size={16} /> Register Project
-                </button>
-                <button className="btn btn-primary" style={{ width: 'auto' }} onClick={() => setShowAddTask(true)}>
-                  <Plus size={16} /> New Task
-                </button>
-              </div>
-            </div>
-
-            {showAddProj && (
-              <form onSubmit={handleCreateProj} className="glass-card" style={{ marginBottom: '24px', border: '1px solid var(--border-glass-active)' }}>
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px', marginBottom: '20px' }}>
-                  <div className="form-group">
-                    <label className="form-label">Project Name</label>
-                    <input type="text" className="form-input" required onChange={e => setNewProjData({...newProjData, projectName: e.target.value})} />
-                  </div>
-                  <div className="form-group">
-                    <label className="form-label">Deadline</label>
-                    <input type="date" className="form-input" required onChange={e => setNewProjData({...newProjData, deadline: e.target.value})} />
-                  </div>
-                  <div className="form-group">
-                    <label className="form-label">Manager (Employee ID)</label>
-                    <input type="text" className="form-input" required onChange={e => setNewProjData({...newProjData, manager: e.target.value})} />
-                  </div>
-                  <div className="form-group">
-                    <label className="form-label">Description</label>
-                    <input type="text" className="form-input" required onChange={e => setNewProjData({...newProjData, description: e.target.value})} />
-                  </div>
-                </div>
-                <div style={{ display: 'flex', gap: '10px', justifyContent: 'flex-end' }}>
-                  <button type="button" className="btn btn-secondary" style={{ width: 'auto' }} onClick={() => setShowAddProj(false)}>Cancel</button>
-                  <button type="submit" className="btn btn-primary" style={{ width: 'auto' }}>Create Project</button>
-                </div>
-              </form>
-            )}
-
-            {showAddTask && (
-              <form onSubmit={handleCreateTask} className="glass-card" style={{ marginBottom: '24px', border: '1px solid var(--border-glass-active)' }}>
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px', marginBottom: '20px' }}>
-                  <div className="form-group">
-                    <label className="form-label">Project</label>
-                    <select className="form-input" required onChange={e => setNewTaskData({...newTaskData, projectId: e.target.value})}>
-                      <option value="">Select Project</option>
-                      {projects.map(p => <option key={p._id} value={p._id}>{p.projectName}</option>)}
-                    </select>
-                  </div>
-                  <div className="form-group">
-                    <label className="form-label">Task Name</label>
-                    <input type="text" className="form-input" required onChange={e => setNewTaskData({...newTaskData, task: e.target.value})} />
-                  </div>
-                  <div className="form-group">
-                    <label className="form-label">Assign To (Employee ID)</label>
-                    <input type="text" className="form-input" required onChange={e => setNewTaskData({...newTaskData, assignedTo: e.target.value})} />
-                  </div>
-                  <div className="form-group">
-                    <label className="form-label">Deadline</label>
-                    <input type="date" className="form-input" required onChange={e => setNewTaskData({...newTaskData, deadline: e.target.value})} />
-                  </div>
-                </div>
-                <div style={{ display: 'flex', gap: '10px', justifyContent: 'flex-end' }}>
-                  <button type="button" className="btn btn-secondary" style={{ width: 'auto' }} onClick={() => setShowAddTask(false)}>Cancel</button>
-                  <button type="submit" className="btn btn-primary" style={{ width: 'auto' }}>Assign Task</button>
-                </div>
-              </form>
-            )}
-
-            {/* Kanban Columns */}
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr 1fr', gap: '16px' }}>
-              {['To Do', 'In Progress', 'Review', 'Completed'].map(col => {
-                const colTasks = tasks.filter(t => t.status === col);
-                return (
-                  <div key={col} className="glass-card" style={{ padding: '16px', background: 'rgba(255,255,255,0.02)' }}>
-                    <h4 style={{ marginBottom: '14px', borderBottom: '2px solid rgba(255,255,255,0.05)', paddingBottom: '6px', textTransform: 'uppercase', fontSize: '12px', color: 'var(--text-secondary)' }}>
-                      {col} ({colTasks.length})
-                    </h4>
-                    
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-                      {colTasks.map(t => (
-                        <div key={t._id} className="glass-card" style={{ padding: '12px', background: 'var(--bg-card)' }}>
-                          <span className={`badge ${t.priority === 'High' ? 'badge-danger' : 'badge-info'}`} style={{ fontSize: '9px', padding: '2px 6px', marginBottom: '6px' }}>{t.priority}</span>
-                          <p style={{ fontSize: '13.5px', fontWeight: '600', marginBottom: '8px' }}>{t.task}</p>
-                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '11px', color: 'var(--text-secondary)' }}>
-                            <span>Dead: {t.deadline}</span>
-                            <code>{t.assignedTo}</code>
-                          </div>
-                          
-                          {/* Kanban transitions */}
-                          <div style={{ display: 'flex', gap: '6px', marginTop: '10px', borderTop: '1px solid rgba(255,255,255,0.05)', paddingTop: '8px' }}>
-                            {col === 'To Do' && (
-                              <button className="btn btn-secondary" style={{ padding: '4px', fontSize: '10px' }} onClick={() => handleTaskStatusChange(t._id, 'In Progress')}>Start</button>
-                            )}
-                            {col === 'In Progress' && (
-                              <button className="btn btn-secondary" style={{ padding: '4px', fontSize: '10px' }} onClick={() => handleTaskStatusChange(t._id, 'Review')}>Submit Review</button>
-                            )}
-                            {col === 'Review' && ['SUPER_ADMIN', 'HR', 'MANAGER'].includes(userRole) && (
-                              <button className="btn btn-primary" style={{ padding: '4px', fontSize: '10px' }} onClick={() => handleTaskStatusChange(t._id, 'Completed')}>Approve</button>
-                            )}
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          </div>
-        )}
-
-        {currentTab === 'assets' && (
-          <div className="glass-card" style={{ animation: 'fadeIn 0.3s ease-out' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
-              <h3>Company IT Assets & Devices</h3>
-              {['SUPER_ADMIN', 'IT'].includes(userRole) && (
-                <button className="btn btn-primary" style={{ width: 'auto' }} onClick={() => setShowAddAsset(true)}>
-                  <Plus size={16} /> Add Asset
-                </button>
-              )}
-            </div>
-
-            {showAddAsset && (
-              <form onSubmit={handleCreateAsset} className="glass-card" style={{ marginBottom: '24px', border: '1px solid var(--border-glass-active)' }}>
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px', marginBottom: '20px' }}>
-                  <div className="form-group">
-                    <label className="form-label">Asset Name</label>
-                    <input type="text" className="form-input" placeholder="e.g. MacBook Pro M3" required onChange={e => setNewAssetData({...newAssetData, assetName: e.target.value})} />
-                  </div>
-                  <div className="form-group">
-                    <label className="form-label">Serial Number</label>
-                    <input type="text" className="form-input" required onChange={e => setNewAssetData({...newAssetData, serialNumber: e.target.value})} />
-                  </div>
-                  <div className="form-group">
-                    <label className="form-label">Type</label>
-                    <select className="form-input" onChange={e => setNewAssetData({...newAssetData, type: e.target.value})}>
-                      <option value="Laptop">Laptop</option>
-                      <option value="Mobile Phone">Mobile Phone</option>
-                      <option value="Monitor">Monitor</option>
-                      <option value="Accessories">Accessories</option>
-                    </select>
-                  </div>
-                  <div className="form-group">
-                    <label className="form-label">Assign To (Employee ID)</label>
-                    <input type="text" className="form-input" placeholder="EMP003" onChange={e => setNewAssetData({...newAssetData, assignedTo: e.target.value})} />
-                  </div>
-                </div>
-                <div style={{ display: 'flex', gap: '10px', justifyContent: 'flex-end' }}>
-                  <button type="button" className="btn btn-secondary" style={{ width: 'auto' }} onClick={() => setShowAddAsset(false)}>Cancel</button>
-                  <button type="submit" className="btn btn-primary" style={{ width: 'auto' }}>Add Asset</button>
-                </div>
-              </form>
-            )}
-
-            <div className="table-container">
-              <table className="data-table">
-                <thead>
-                  <tr>
-                    <th>Asset Name</th>
-                    <th>Serial Number</th>
-                    <th>Type</th>
-                    <th>Assigned To</th>
-                    <th>Status</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {assets.map(asset => (
-                    <tr key={asset._id}>
-                      <td><strong>{asset.assetName}</strong></td>
-                      <td><code>{asset.serialNumber}</code></td>
-                      <td>{asset.type}</td>
-                      <td>{asset.assignedTo || <span style={{ color: 'var(--text-muted)' }}>Unassigned</span>}</td>
-                      <td><span className={`badge ${asset.status === 'Assigned' ? 'badge-success' : 'badge-warning'}`}>{asset.status}</span></td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </div>
-        )}
-
-        {currentTab === 'tickets' && (
-          <div className="glass-card" style={{ animation: 'fadeIn 0.3s ease-out' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
-              <h3>IT Support Ticketing Dashboard</h3>
-              <button className="btn btn-primary" style={{ width: 'auto' }} onClick={() => setShowAddTicket(true)}>
-                <Plus size={16} /> Raise Support Ticket
-              </button>
-            </div>
-
-            {showAddTicket && (
-              <form onSubmit={handleCreateTicket} className="glass-card" style={{ marginBottom: '24px', border: '1px solid var(--border-glass-active)' }}>
-                <div className="form-group">
-                  <label className="form-label">Ticket Title</label>
-                  <input type="text" className="form-input" placeholder="VPN configuration or software error" required onChange={e => setNewTicketData({...newTicketData, title: e.target.value})} />
-                </div>
-                <div className="form-group">
-                  <label className="form-label">Priority</label>
-                  <select className="form-input" onChange={e => setNewTicketData({...newTicketData, priority: e.target.value})}>
-                    <option value="Low">Low</option>
-                    <option value="Medium">Medium</option>
-                    <option value="High">High</option>
-                  </select>
-                </div>
-                <div className="form-group">
-                  <label className="form-label">Description of Issue</label>
-                  <textarea className="form-input" style={{ minHeight: '80px' }} required onChange={e => setNewTicketData({...newTicketData, description: e.target.value})}></textarea>
-                </div>
-                <div style={{ display: 'flex', gap: '10px', justifyContent: 'flex-end' }}>
-                  <button type="button" className="btn btn-secondary" style={{ width: 'auto' }} onClick={() => setShowAddTicket(false)}>Cancel</button>
-                  <button type="submit" className="btn btn-primary" style={{ width: 'auto' }}>Submit Ticket</button>
-                </div>
-              </form>
-            )}
-
-            <div className="table-container">
-              <table className="data-table">
-                <thead>
-                  <tr>
-                    <th>Ticket Title</th>
-                    <th>Details</th>
-                    <th>Priority</th>
-                    <th>Status</th>
-                    <th>Actions (IT Admin)</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {tickets.map(tkt => (
-                    <tr key={tkt._id}>
-                      <td><strong>{tkt.title}</strong></td>
-                      <td>{tkt.description}</td>
-                      <td><span className={`badge ${tkt.priority === 'High' ? 'badge-danger' : 'badge-info'}`}>{tkt.priority}</span></td>
-                      <td><span className="badge badge-warning">{tkt.status}</span></td>
-                      <td>
-                        {tkt.status === 'Open' && ['SUPER_ADMIN', 'IT'].includes(userRole) && (
-                          <button className="btn btn-secondary" style={{ padding: '6px 12px', fontSize: '11px', width: 'auto' }} onClick={async () => {
-                            try {
-                              const res = await apiFetch(`/api/tickets/${tkt._id}`, {
-                                method: 'PUT',
-                                body: JSON.stringify({ status: 'Resolved' })
-                              });
-                              if (res.success) {
-                                alert('Ticket marked as Resolved.');
-                                fetchDashboardData();
-                              }
-                            } catch (e) { alert(e.message); }
-                          }}>
-                            Mark Resolved
-                          </button>
-                        )}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </div>
-        )}
+          <Route path="/attendance" element={<AttendancePage attendance={attendance} />} />
+          
+          <Route path="/leaves" element={<LeavePage leaves={leaves} handleApplyLeave={handleApplyLeave} />} />
+          
+          <Route path="/payroll" element={<PayrollPage payroll={payroll} />} />
+          
+          <Route path="/projects" element={
+            <ProjectsPage 
+              projects={projects} showAddProj={showAddProj} setShowAddProj={setShowAddProj}
+              newProjData={newProjData} setNewProjData={setNewProjData} handleCreateProj={handleCreateProj}
+              tasks={tasks} showAddTask={showAddTask} setShowAddTask={setShowAddTask}
+              newTaskData={newTaskData} setNewTaskData={setNewTaskData} handleCreateTask={handleCreateTask}
+              employees={employees}
+            />
+          } />
+          
+          <Route path="/assets" element={
+            <AssetsPage 
+              userRole={userRole} assets={assets} showAddAsset={showAddAsset}
+              setShowAddAsset={setShowAddAsset} newAssetData={newAssetData}
+              setNewAssetData={setNewAssetData} handleCreateAsset={handleCreateAsset}
+              employees={employees}
+            />
+          } />
+          
+          <Route path="/tickets" element={
+            <TicketsPage 
+              tickets={tickets} showAddTicket={showAddTicket} setShowAddTicket={setShowAddTicket}
+              newTicketData={newTicketData} setNewTicketData={setNewTicketData} handleCreateTicket={handleCreateTicket}
+            />
+          } />
+          
+          <Route path="/settings" element={<SettingsPage />} />
+        </Routes>
+      
       </main>
 
-      {/* Floating chatbot bubble trigger */}
-      <div className="ai-trigger" onClick={() => setShowAi(!showAi)}>
-        <Bot size={24} />
-      </div>
-
-      {/* Slideout Chat Panel */}
-      {showAi && (
-        <div className="ai-panel glass-card">
-          <div className="ai-panel-header">
-            <div className="ai-title">
-              <Bot size={18} style={{ color: 'var(--primary)' }} />
-              <span>Operations Assistant</span>
-            </div>
-            <button style={{ background: 'transparent', border: 'none', color: 'var(--text-secondary)', cursor: 'pointer' }} onClick={() => setShowAi(false)}>
-              <X size={18} />
-            </button>
-          </div>
-
-          <div className="ai-messages">
-            {aiHistory.map((h, i) => (
-              <div key={i} className={`ai-msg ${h.role === 'user' ? 'ai-msg-user' : 'ai-msg-assistant'}`}>
-                {h.content.split('\n').map((para, index) => {
-                  if (para.startsWith('###')) return <h4 key={index} style={{ marginTop: '8px', marginBottom: '6px' }}>{para.replace('###', '')}</h4>;
-                  if (para.startsWith('-')) return <li key={index} style={{ marginLeft: '12px', fontSize: '13px' }}>{para.replace('-', '')}</li>;
-                  return <p key={index} style={{ marginBottom: '6px', fontSize: '13px' }}>{para}</p>;
-                })}
-              </div>
-            ))}
-            {aiLoading && (
-              <div className="ai-msg ai-msg-assistant" style={{ fontStyle: 'italic' }}>
-                Analyzing workforce records...
-              </div>
-            )}
-            <div ref={chatEndRef} />
-          </div>
-
-          <form className="ai-input-box" onSubmit={handleSendAiMessage}>
-            <input 
-              type="text" 
-              className="form-input" 
-              placeholder="Ask about leaves, salary, policies..." 
-              value={aiMessage}
-              onChange={(e) => setAiMessage(e.target.value)}
-              required
-            />
-            <button type="submit" className="btn btn-primary" style={{ width: 'auto', padding: '12px' }}>
-              <Send size={14} />
-            </button>
-          </form>
-        </div>
-      )}
+      <AiAssistant 
+        showAi={showAi}
+        setShowAi={setShowAi}
+        aiHistory={aiHistory}
+        aiLoading={aiLoading}
+        chatEndRef={chatEndRef}
+        handleSendAiMessage={handleSendAiMessage}
+        aiMessage={aiMessage}
+        setAiMessage={setAiMessage}
+      />
     </div>
   );
 }

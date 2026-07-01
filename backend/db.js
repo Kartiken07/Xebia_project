@@ -1,167 +1,124 @@
-import fs from 'fs';
-import path from 'path';
-import { fileURLToPath } from 'url';
+import mongoose from 'mongoose';
+import config from './config/index.js';
 
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
-const DB_PATH = path.join(__dirname, 'data', 'database.json');
+mongoose.connect(config.mongoUri)
+  .then(() => console.log('Connected to MongoDB via Mongoose'))
+  .catch(err => console.error('MongoDB connection error:', err));
 
-// Ensure data folder exists
-if (!fs.existsSync(path.dirname(DB_PATH))) {
-  fs.mkdirSync(path.dirname(DB_PATH), { recursive: true });
-}
+import {
+  UserSchema,
+  EmployeeSchema,
+  DepartmentSchema,
+  CandidateSchema,
+  AttendanceSchema,
+  LeaveSchema,
+  PayrollSchema,
+  ProjectSchema,
+  TaskSchema,
+  AssetSchema,
+  TicketSchema,
+  NotificationSchema,
+  AuditLogSchema,
+  CounterSchema
+} from './models/schemas.js';
 
-// Initial structure if file doesn't exist
-if (!fs.existsSync(DB_PATH)) {
-  fs.writeFileSync(DB_PATH, JSON.stringify({
-    users: [],
-    employees: [],
-    departments: [],
-    candidates: [],
-    attendance: [],
-    leaves: [],
-    payroll: [],
-    projects: [],
-    tasks: [],
-    assets: [],
-    tickets: [],
-    notifications: [],
-    auditLogs: []
-  }, null, 2));
-}
-
-class Collection {
-  constructor(name) {
-    this.name = name;
+class MongooseWrapper {
+  constructor(modelName, schema) {
+    this.model = mongoose.model(modelName, schema);
   }
 
-  read() {
-    try {
-      const data = fs.readFileSync(DB_PATH, 'utf8');
-      return JSON.parse(data)[this.name] || [];
-    } catch (e) {
-      console.error(`Error reading collection ${this.name}`, e);
-      return [];
-    }
+  async find(query = {}) {
+    return this.model.find(query).lean();
   }
 
-  write(data) {
-    try {
-      const dbData = JSON.parse(fs.readFileSync(DB_PATH, 'utf8'));
-      dbData[this.name] = data;
-      fs.writeFileSync(DB_PATH, JSON.stringify(dbData, null, 2), 'utf8');
-    } catch (e) {
-      console.error(`Error writing collection ${this.name}`, e);
-    }
-  }
-
-  find(query = {}) {
-    let items = this.read();
-    return items.filter(item => {
-      for (let key in query) {
-        if (query[key] !== undefined && item[key] !== query[key]) {
-          return false;
-        }
+  async findPaginated(query = {}, page = 1, limit = 50, sort = { createdAt: -1 }) {
+    const skip = (page - 1) * limit;
+    const [data, total] = await Promise.all([
+      this.model.find(query).sort(sort).skip(skip).limit(limit).lean(),
+      this.model.countDocuments(query)
+    ]);
+    return {
+      data,
+      meta: {
+        total,
+        page: Number(page),
+        limit: Number(limit),
+        totalPages: Math.ceil(total / limit)
       }
-      return true;
-    });
-  }
-
-  findOne(query = {}) {
-    const items = this.find(query);
-    return items.length > 0 ? items[0] : null;
-  }
-
-  findById(id) {
-    const items = this.read();
-    return items.find(item => item._id === id || item.id === id) || null;
-  }
-
-  create(doc) {
-    const items = this.read();
-    const newDoc = {
-      _id: Math.random().toString(36).substring(2, 9) + Date.now().toString(36),
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
-      ...doc
     };
-    items.push(newDoc);
-    this.write(items);
-    return newDoc;
   }
 
-  findByIdAndUpdate(id, updateData) {
-    const items = this.read();
-    const index = items.findIndex(item => item._id === id || item.id === id);
-    if (index === -1) return null;
-
-    items[index] = {
-      ...items[index],
-      ...updateData,
-      updatedAt: new Date().toISOString()
-    };
-    this.write(items);
-    return items[index];
+  async findOne(query = {}) {
+    return this.model.findOne(query).lean();
   }
 
-  updateOne(query, updateData) {
-    const items = this.read();
-    const index = items.findIndex(item => {
-      for (let key in query) {
-        if (item[key] !== query[key]) return false;
-      }
-      return true;
-    });
-    if (index === -1) return false;
-
-    items[index] = {
-      ...items[index],
-      ...updateData,
-      updatedAt: new Date().toISOString()
-    };
-    this.write(items);
-    return items[index];
+  async findById(id) {
+    return this.model.findOne({ $or: [{ _id: id }, { id: id }] }).lean();
   }
 
-  deleteMany(query = {}) {
-    const items = this.read();
-    const filtered = items.filter(item => {
-      for (let key in query) {
-        if (item[key] === query[key]) return false;
-      }
-      return true;
-    });
-    this.write(filtered);
-    return { deletedCount: items.length - filtered.length };
+  async create(doc, options = {}) {
+    const created = await this.model.create([doc], options);
+    return created[0].toObject(); 
   }
 
-  deleteOne(query = {}) {
-    const items = this.read();
-    const index = items.findIndex(item => {
-      for (let key in query) {
-        if (item[key] !== query[key]) return false;
-      }
-      return true;
-    });
-    if (index === -1) return { deletedCount: 0 };
-    items.splice(index, 1);
-    this.write(items);
-    return { deletedCount: 1 };
+  async findByIdAndUpdate(id, updateData, options = {}) {
+    return this.model.findOneAndUpdate(
+      { $or: [{ _id: id }, { id: id }] },
+      updateData,
+      { new: true, lean: true, ...options }
+    );
+  }
+
+  async updateOne(query, updateData, options = {}) {
+    return this.model.findOneAndUpdate(query, updateData, { new: true, lean: true, ...options });
+  }
+
+  async deleteMany(query = {}) {
+    return this.model.deleteMany(query);
+  }
+
+  async deleteOne(query = {}) {
+    return this.model.deleteOne(query);
+  }
+  
+  async insertMany(docs) {
+    return this.model.insertMany(docs);
   }
 }
 
 export const db = {
-  users: new Collection('users'),
-  employees: new Collection('employees'),
-  departments: new Collection('departments'),
-  candidates: new Collection('candidates'),
-  attendance: new Collection('attendance'),
-  leaves: new Collection('leaves'),
-  payroll: new Collection('payroll'),
-  projects: new Collection('projects'),
-  tasks: new Collection('tasks'),
-  assets: new Collection('assets'),
-  tickets: new Collection('tickets'),
-  notifications: new Collection('notifications'),
-  auditLogs: new Collection('auditLogs')
+  users: new MongooseWrapper('User', UserSchema),
+  employees: new MongooseWrapper('Employee', EmployeeSchema),
+  departments: new MongooseWrapper('Department', DepartmentSchema),
+  candidates: new MongooseWrapper('Candidate', CandidateSchema),
+  attendance: new MongooseWrapper('Attendance', AttendanceSchema),
+  leaves: new MongooseWrapper('Leave', LeaveSchema),
+  payroll: new MongooseWrapper('Payroll', PayrollSchema),
+  projects: new MongooseWrapper('Project', ProjectSchema),
+  tasks: new MongooseWrapper('Task', TaskSchema),
+  assets: new MongooseWrapper('Asset', AssetSchema),
+  tickets: new MongooseWrapper('Ticket', TicketSchema),
+  notifications: new MongooseWrapper('Notification', NotificationSchema),
+  auditLogs: new MongooseWrapper('AuditLog', AuditLogSchema),
+  counters: new MongooseWrapper('Counter', CounterSchema)
+};
+
+/**
+ * Executes a callback within a MongoDB transaction.
+ * Requires a MongoDB Replica Set.
+ */
+export const withTransaction = async (callback) => {
+  const session = await mongoose.startSession();
+  try {
+    let result;
+    await session.withTransaction(async () => {
+      result = await callback(session);
+    });
+    return result;
+  } catch (error) {
+    console.error('Transaction aborted:', error);
+    throw error;
+  } finally {
+    await session.endSession();
+  }
 };
