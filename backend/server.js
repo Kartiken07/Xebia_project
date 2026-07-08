@@ -127,10 +127,14 @@ app.use((err, req, res, next) => {
 // ──────────────────────────────────────────────
 // Start Server
 // ──────────────────────────────────────────────
-app.listen(config.port, () => {
-  console.log(`==================================================`);
-  console.log(`🚀 Workforce API Server running on port ${config.port}`);
-  console.log(`🔒 Environment: ${config.nodeEnv}`);
-  console.log(`🌐 CORS Origins: ${config.cors.allowedOrigins.join(', ')}`);
-  console.log(`==================================================`);
-});
+if (process.env.NODE_ENV !== 'production') {
+  app.listen(config.port, () => {
+    console.log(`==================================================`);
+    console.log(`🚀 Workforce API Server running on port ${config.port}`);
+    console.log(`🔒 Environment: ${config.nodeEnv}`);
+    console.log(`🌐 CORS Origins: ${config.cors.allowedOrigins.join(', ')}`);
+    console.log(`==================================================`);
+  });
+}
+
+export default app;
