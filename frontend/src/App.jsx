@@ -26,7 +26,7 @@ import AssetsPage from './pages/AssetsPage';
 import TicketsPage from './pages/TicketsPage';
 import SettingsPage from './pages/SettingsPage';
 
-const API_BASE = ''; // Uses Vite proxy (direct calls to /api)
+const API_BASE = import.meta.env.VITE_API_URL || ''; // Uses env variable for prod, Vite proxy in dev
 
 // Helper to format currency
 const formatCurrency = (val) => new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 0 }).format(val);

@@ -4,7 +4,7 @@ import { db } from '../db.js';
 import { authenticateToken, requireRole } from '../middleware/auth.js';
 
 const router = express.Router();
-const upload = multer({ dest: 'uploads/' });
+const upload = multer({ storage: multer.memoryStorage() });
 
 // Get all candidates
 router.get('/candidates', authenticateToken, requireRole(['SUPER_ADMIN', 'HR', 'MANAGER']), async (req, res) => {
