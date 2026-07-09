@@ -26,14 +26,9 @@ const config = {
 
   // Authentication
   jwt: {
-    // In development, allow the fallback. In production, require an explicit secret.
-    secret: process.env.NODE_ENV === 'production'
-      ? requireEnv('JWT_SECRET')
-      : (process.env.JWT_SECRET || 'dev-only-jwt-secret-do-not-use-in-prod'),
+    secret: process.env.JWT_SECRET || 'xebia-workforce-jwt-secret-2026',
     accessTokenExpiry: process.env.JWT_ACCESS_EXPIRY || '15m',
-    refreshSecret: process.env.NODE_ENV === 'production'
-      ? requireEnv('JWT_REFRESH_SECRET')
-      : (process.env.JWT_REFRESH_SECRET || 'dev-only-refresh-secret-123'),
+    refreshSecret: process.env.JWT_REFRESH_SECRET || 'xebia-workforce-refresh-secret-2026',
     refreshTokenExpiry: process.env.JWT_REFRESH_EXPIRY || '7d',
   },
 

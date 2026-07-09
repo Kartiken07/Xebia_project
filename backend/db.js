@@ -7,25 +7,38 @@ if (!cached) {
   cached = global.mongoose = { conn: null, promise: null };
 }
 
-if (!cached.promise) {
-  const opts = {
-    bufferCommands: true,
-    maxPoolSize: 10,
-    serverSelectionTimeoutMS: 10000,
-    socketTimeoutMS: 45000,
-    family: 4 // Force IPv4 to fix Vercel DNS resolution issues
-  };
-  cached.promise = mongoose.connect(config.mongoUri, opts)
-    .then((mongooseInstance) => {
-      console.log('Connected to MongoDB via Mongoose (Serverless cached)');
-      return mongooseInstance;
-    })
-    .catch(err => {
-      console.error('MongoDB connection error:', err);
-      cached.promise = null;
-    });
+/**
+ * Connect to MongoDB. MUST be awaited before any database operation.
+ * Uses connection caching for Vercel serverless — avoids opening
+ * a new connection on every invocation.
+ */
+export async function connectDB() {
+  if (cached.conn) return cached.conn;
+
+  if (!cached.promise) {
+    const opts = {
+      bufferCommands: false,       // Fail fast instead of buffering for 10s
+      maxPoolSize: 10,
+      serverSelectionTimeoutMS: 10000,
+      socketTimeoutMS: 45000,
+      family: 4,                   // Force IPv4 — fixes Vercel DNS issues
+    };
+    console.log('[DB] Connecting to MongoDB...');
+    cached.promise = mongoose.connect(config.mongoUri, opts)
+      .then((m) => {
+        console.log('[DB] Connected to MongoDB successfully.');
+        return m;
+      })
+      .catch((err) => {
+        console.error('[DB] MongoDB connection failed:', err.message);
+        cached.promise = null;      // Allow retry on next request
+        throw err;
+      });
+  }
+
+  cached.conn = await cached.promise;
+  return cached.conn;
 }
-cached.conn = cached.promise;
 
 import {
   UserSchema,

@@ -113,4 +113,11 @@ router.delete('/departments/:id', authenticateToken, requireRole(['SUPER_ADMIN',
   res.json({ success: true, message: 'Department archived successfully.' });
 });
 
+// Get audit logs (Super Admin, HR, Manager)
+router.get('/audit-logs', authenticateToken, requireRole(['SUPER_ADMIN', 'HR', 'MANAGER']), async (req, res) => {
+  const { page = 1, limit = 50 } = req.query;
+  const { data, meta } = await db.auditLogs.findPaginated({}, page, limit, { timestamp: -1 });
+  res.json({ success: true, auditLogs: data, pagination: meta });
+});
+
 export default router;

@@ -1,13 +1,13 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { 
-  User, Users, Settings, LogOut, Clock, Calendar, DollarSign, Award, 
-  Briefcase, Laptop, HelpCircle, Send, Bot, Bell, Plus, Search, 
-  Check, X, ChevronRight, BarChart3, AlertTriangle, FileText, 
+import {
+  User, Users, Settings, LogOut, Clock, Calendar, DollarSign, Award,
+  Briefcase, Laptop, HelpCircle, Send, Bot, Bell, Plus, Search,
+  Check, X, ChevronRight, BarChart3, AlertTriangle, FileText,
   CheckCircle2, MapPin, QrCode, MessageSquare, Menu, Globe
 } from 'lucide-react';
-import { 
-  ResponsiveContainer, AreaChart, Area, XAxis, YAxis, 
-  Tooltip, BarChart, Bar, Legend, PieChart, Pie, Cell 
+import {
+  ResponsiveContainer, AreaChart, Area, XAxis, YAxis,
+  Tooltip, BarChart, Bar, Legend, PieChart, Pie, Cell
 } from 'recharts';
 
 import Auth from './components/Auth';
@@ -38,7 +38,7 @@ export default function App() {
   const [userId, setUserId] = useState(localStorage.getItem('userId') || '');
   const [empId, setEmpId] = useState(localStorage.getItem('employeeId') || '');
   const [userName, setUserName] = useState(localStorage.getItem('name') || '');
-  
+
   const location = useLocation();
   const currentTab = location.pathname === '/' ? 'overview' : location.pathname.substring(1).split('/')[0];
 
@@ -46,8 +46,8 @@ export default function App() {
   const [showNotifications, setShowNotifications] = useState(false);
 
   // Authentication Forms
-  const [loginEmail, setLoginEmail] = useState('admin@company.com');
-  const [loginPassword, setLoginPassword] = useState('Admin@123');
+  const [loginEmail, setLoginEmail] = useState('');
+  const [loginPassword, setLoginPassword] = useState('');
   const [authError, setAuthError] = useState('');
   const [authSuccess, setAuthSuccess] = useState('');
   const [forgotEmail, setForgotEmail] = useState('');
@@ -243,7 +243,7 @@ export default function App() {
         setUserId(data.userId);
         setEmpId(data.employeeId || '');
         setUserName(data.name);
-        
+
         setAuthSuccess('Welcome back!');
       }
     } catch (err) {
@@ -319,9 +319,9 @@ export default function App() {
         setAiHistory(prev => [...prev, { role: 'assistant', content: data.response }]);
       }
     } catch (err) {
-      setAiHistory(prev => [...prev, { 
-        role: 'assistant', 
-        content: `Sorry, I couldn't reach the AI services server. Please ensure the backend is running. Fallback: Your profile code is linked to role **${userRole}**.` 
+      setAiHistory(prev => [...prev, {
+        role: 'assistant',
+        content: `Sorry, I couldn't reach the AI services server. Please ensure the backend is running. Fallback: Your profile code is linked to role **${userRole}**.`
       }]);
     } finally {
       setAiLoading(false);
@@ -537,7 +537,7 @@ export default function App() {
   // Auth UI Rendering if not logged in
   if (!isAuthenticated) {
     return (
-      <Auth 
+      <Auth
         handleLogin={handleLogin}
         loginEmail={loginEmail}
         setLoginEmail={setLoginEmail}
@@ -553,7 +553,7 @@ export default function App() {
   return (
     <div className="dashboard-layout">
       {/* Sidebar Navigation */}
-      <Sidebar 
+      <Sidebar
         userRole={userRole}
         userName={userName}
         handleLogout={handleLogout}
@@ -566,14 +566,14 @@ export default function App() {
             <h1 className="page-title">{currentTab.charAt(0).toUpperCase() + currentTab.slice(1)} Dashboard</h1>
             <p className="page-subtitle">Welcome back, {userName}. Managing operations smoothly.</p>
           </div>
-          
+
           <div style={{ display: 'flex', gap: '12px', alignItems: 'center' }}>
             {/* Custom Dev API setting bar */}
             <div style={{ display: 'flex', gap: '6px', fontSize: '11px', background: 'rgba(255,255,255,0.04)', padding: '6px 12px', borderRadius: '20px', border: '1px solid var(--border-glass)' }}>
               <Bot size={13} style={{ color: 'var(--primary)' }} />
-              <input 
-                type="password" 
-                placeholder="Optional Groq API Key" 
+              <input
+                type="password"
+                placeholder="Optional Groq API Key"
                 style={{ background: 'transparent', border: 'none', color: 'white', width: '120px', fontSize: '11px', outline: 'none' }}
                 value={customApiKey}
                 onChange={(e) => setCustomApiKey(e.target.value)}
@@ -581,8 +581,8 @@ export default function App() {
             </div>
 
             <div style={{ position: 'relative' }}>
-              <button 
-                className="btn btn-secondary" 
+              <button
+                className="btn btn-secondary"
                 style={{ padding: '8px 12px', width: 'auto', borderRadius: '50%' }}
                 onClick={() => setShowNotifications(!showNotifications)}
               >
@@ -610,16 +610,16 @@ export default function App() {
 
         <Routes>
           <Route path="/" element={
-            <DashboardOverview 
-              employees={employees} 
-              projects={projects} 
+            <DashboardOverview
+              employees={employees}
+              projects={projects}
               leaves={leaves}
-              assets={assets} 
-              tasks={tasks} 
+              assets={assets}
+              tasks={tasks}
               gpsSimulated={gpsSimulated}
-              setGpsSimulated={setGpsSimulated} 
+              setGpsSimulated={setGpsSimulated}
               qrSimulated={qrSimulated}
-              setQrSimulated={setQrSimulated} 
+              setQrSimulated={setQrSimulated}
               handleClockIn={handleClockIn}
               handleClockOut={handleClockOut}
               userRole={userRole}
@@ -646,9 +646,9 @@ export default function App() {
               fetchDashboardData={fetchDashboardData}
             />
           } />
-          
+
           <Route path="/employees" element={
-            <EmployeesPage 
+            <EmployeesPage
               userRole={userRole} employees={employees} departments={departments}
               showAddEmp={showAddEmp} setShowAddEmp={setShowAddEmp}
               newEmpData={newEmpData} setNewEmpData={setNewEmpData}
@@ -657,7 +657,7 @@ export default function App() {
           } />
 
           <Route path="/recruitment" element={
-            <RecruitmentPage 
+            <RecruitmentPage
               candidates={candidates} showAddCand={showAddCand}
               setShowAddCand={setShowAddCand} newCandData={newCandData}
               setNewCandData={setNewCandData} handleCreateCand={handleCreateCand}
@@ -667,22 +667,22 @@ export default function App() {
           } />
 
           <Route path="/attendance" element={<AttendancePage attendance={attendance} />} />
-          
+
           <Route path="/leaves" element={
-            <LeavePage 
-              leaves={leaves} 
-              leaveBalances={leaveBalances} 
-              pendingLeaves={pendingLeaves} 
-              handleApplyLeave={handleApplyLeave} 
-              handleLeaveReview={handleLeaveReview} 
-              userRole={userRole} 
+            <LeavePage
+              leaves={leaves}
+              leaveBalances={leaveBalances}
+              pendingLeaves={pendingLeaves}
+              handleApplyLeave={handleApplyLeave}
+              handleLeaveReview={handleLeaveReview}
+              userRole={userRole}
             />
           } />
-          
+
           <Route path="/payroll" element={<PayrollPage payroll={payroll} handleRunPayroll={handleRunPayroll} userRole={userRole} />} />
-          
+
           <Route path="/projects" element={
-            <ProjectsPage 
+            <ProjectsPage
               projects={projects} showAddProj={showAddProj} setShowAddProj={setShowAddProj}
               newProjData={newProjData} setNewProjData={setNewProjData} handleCreateProj={handleCreateProj}
               tasks={tasks} showAddTask={showAddTask} setShowAddTask={setShowAddTask}
@@ -691,29 +691,29 @@ export default function App() {
               handleTaskStatusChange={handleTaskStatusChange}
             />
           } />
-          
+
           <Route path="/assets" element={
-            <AssetsPage 
+            <AssetsPage
               userRole={userRole} assets={assets} showAddAsset={showAddAsset}
               setShowAddAsset={setShowAddAsset} newAssetData={newAssetData}
               setNewAssetData={setNewAssetData} handleCreateAsset={handleCreateAsset}
               employees={employees}
             />
           } />
-          
+
           <Route path="/tickets" element={
-            <TicketsPage 
+            <TicketsPage
               tickets={tickets} showAddTicket={showAddTicket} setShowAddTicket={setShowAddTicket}
               newTicketData={newTicketData} setNewTicketData={setNewTicketData} handleCreateTicket={handleCreateTicket}
             />
           } />
-          
+
           <Route path="/settings" element={<SettingsPage />} />
         </Routes>
-      
+
       </main>
 
-      <AiAssistant 
+      <AiAssistant
         showAi={showAi}
         setShowAi={setShowAi}
         aiHistory={aiHistory}

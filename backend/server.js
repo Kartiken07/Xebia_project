@@ -77,6 +77,21 @@ app.use((req, res, next) => {
 });
 
 // ──────────────────────────────────────────────
+// Ensure DB is connected before any API route
+// ──────────────────────────────────────────────
+import { connectDB } from './db.js';
+
+app.use('/api', async (req, res, next) => {
+  try {
+    await connectDB();
+    next();
+  } catch (err) {
+    console.error('[DB Middleware] Failed to connect:', err.message);
+    res.status(503).json({ success: false, message: 'Database unavailable. Please try again shortly.' });
+  }
+});
+
+// ──────────────────────────────────────────────
 // API Routes
 // ──────────────────────────────────────────────
 app.use('/api/auth', authRouter);

@@ -21,7 +21,7 @@ export const cacheResponse = (duration = 300) => {
 
     if (cachedResponse) {
       // If we have a cached response, serve it directly
-      return successResponse(res, 200, cachedResponse.message, { ...cachedResponse.data, _cached: true });
+      return successResponse(res, { ...cachedResponse.data, _cached: true }, cachedResponse.message || 'Success');
     }
 
     // Intercept the response JSON method to cache it before sending
