@@ -35,7 +35,13 @@ app.use(helmet());
 
 // CORS: restrict to known origins instead of accepting all
 app.use(cors({
-  origin: config.cors.allowedOrigins,
+  origin: (origin, callback) => {
+    if (!origin || config.cors.allowedOrigins.includes('*') || config.cors.allowedOrigins.includes(origin)) {
+      callback(null, origin || false);
+    } else {
+      callback(new Error('Not allowed by CORS'));
+    }
+  },
   credentials: true,
 }));
 

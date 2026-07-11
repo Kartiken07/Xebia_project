@@ -37,7 +37,7 @@ const config = {
     // Comma-separated list of allowed origins, or '*' for development
     allowedOrigins: process.env.CORS_ORIGINS
       ? process.env.CORS_ORIGINS.split(',').map(s => s.trim())
-      : ['http://localhost:5173', 'http://localhost:5000', 'http://localhost:3000', 'https://xebia-workforce.vercel.app'],
+      : ['http://localhost:5173', 'http://localhost:5000', 'http://localhost:3000', 'https://xebia-workforce.vercel.app', 'https://xebia-project-alpha.vercel.app'],
   },
 
   // Rate Limiting
