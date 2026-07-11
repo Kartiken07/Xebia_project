@@ -132,10 +132,12 @@ export default function App() {
       'Content-Type': 'application/json',
       ...options.headers
     };
+    const token = localStorage.getItem('accessToken');
+    if (token) headers['Authorization'] = `Bearer ${token}`;
     const fetchOptions = {
       ...options,
       headers,
-      credentials: 'include' // Crucial for HttpOnly cookies
+      credentials: 'include'
     };
     try {
       const res = await fetch(`${API_BASE}${url}`, fetchOptions);
@@ -144,10 +146,14 @@ export default function App() {
         if (res.status === 401 && url !== '/api/auth/login' && url !== '/api/auth/refresh') {
           // Attempt refresh
           try {
-            const refreshRes = await fetch(`${API_BASE}/api/auth/refresh`, { method: 'POST', credentials: 'include' });
+            const refreshRes = await fetch(`${API_BASE}/api/auth/refresh`, { method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' } });
             if (refreshRes.ok) {
-              // Retry original request
-              const retryRes = await fetch(`${API_BASE}${url}`, fetchOptions);
+              const refreshData = await refreshRes.json();
+              if (refreshData.accessToken) localStorage.setItem('accessToken', refreshData.accessToken);
+              // Retry original request with new token
+              const newHeaders = { ...fetchOptions.headers };
+              if (refreshData.accessToken) newHeaders['Authorization'] = `Bearer ${refreshData.accessToken}`;
+              const retryRes = await fetch(`${API_BASE}${url}`, { ...fetchOptions, headers: newHeaders });
               const retryData = await retryRes.json();
               if (!retryRes.ok) throw new Error(retryData.message || 'Something went wrong');
               return retryData;
@@ -237,6 +243,7 @@ export default function App() {
         localStorage.setItem('userId', data.userId);
         localStorage.setItem('employeeId', data.employeeId || '');
         localStorage.setItem('name', data.name);
+        if (data.accessToken) localStorage.setItem('accessToken', data.accessToken);
 
         setIsAuthenticated(true);
         setUserRole(data.role);
@@ -259,6 +266,8 @@ export default function App() {
       console.error('Logout error:', err);
     }
     localStorage.clear();
+    sessionStorage.clear();
+    document.cookie.split(';').forEach(c => { document.cookie = c.trim().split('=')[0] + '=;expires=Thu, 01 Jan 1970 00:00:00 GMT;path=/'; });
     setIsAuthenticated(false);
     setUserRole('');
     setUserId('');

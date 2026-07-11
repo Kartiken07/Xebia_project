@@ -113,7 +113,8 @@ router.post('/login', validate(loginSchema), asyncHandler(async (req, res) => {
     success: true,
     role: user.role,
     employeeId: user.employeeId || null,
-    name: user.name
+    name: user.name,
+    accessToken: token
   });
 }));
 
@@ -149,7 +150,7 @@ router.post('/refresh', asyncHandler(async (req, res) => {
 
   setAuthCookies(res, newAccessToken, newRefreshToken);
 
-  res.json({ success: true, message: 'Tokens refreshed' });
+  res.json({ success: true, message: 'Tokens refreshed', accessToken: newAccessToken });
 }));
 
 // User Logout (FR-A07)

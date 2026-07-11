@@ -5,7 +5,8 @@ import config from '../config/index.js';
 const JWT_SECRET = config.jwt.secret;
 
 export const authenticateToken = async (req, res, next) => {
-  const token = req.cookies.accessToken;
+  const authHeader = req.headers['authorization'];
+  const token = (authHeader && authHeader.startsWith('Bearer ') ? authHeader.slice(7) : null) || req.cookies.accessToken;
 
   if (!token) {
     return res.status(401).json({ success: false, message: 'Access Token Required' });
