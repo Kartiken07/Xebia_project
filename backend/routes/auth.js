@@ -23,14 +23,14 @@ const setAuthCookies = (res, accessToken, refreshToken) => {
   res.cookie('accessToken', accessToken, {
     httpOnly: true,
     secure: config.nodeEnv === 'production',
-    sameSite: 'strict',
+    sameSite: config.nodeEnv === 'production' ? 'none' : 'lax',
     maxAge: 15 * 60 * 1000 // 15 minutes
   });
 
   res.cookie('refreshToken', refreshToken, {
     httpOnly: true,
     secure: config.nodeEnv === 'production',
-    sameSite: 'strict',
+    sameSite: config.nodeEnv === 'production' ? 'none' : 'lax',
     maxAge: 7 * 24 * 60 * 60 * 1000 // 7 days
   });
 };
@@ -129,8 +129,8 @@ router.post('/refresh', asyncHandler(async (req, res) => {
   const user = await db.users.findOne({ refreshToken: hashedToken });
 
   if (!user || user.locked) {
-    res.clearCookie('accessToken');
-    res.clearCookie('refreshToken');
+    res.clearCookie('accessToken', { sameSite: config.nodeEnv === 'production' ? 'none' : 'lax', secure: config.nodeEnv === 'production' });
+    res.clearCookie('refreshToken', { sameSite: config.nodeEnv === 'production' ? 'none' : 'lax', secure: config.nodeEnv === 'production' });
     return res.status(403).json({ success: false, message: 'Invalid refresh token or account locked' });
   }
 
@@ -160,8 +160,8 @@ router.post('/logout', asyncHandler(async (req, res) => {
     await db.users.updateOne({ refreshToken: hashedToken }, { refreshToken: null });
   }
   
-  res.clearCookie('accessToken');
-  res.clearCookie('refreshToken');
+  res.clearCookie('accessToken', { sameSite: config.nodeEnv === 'production' ? 'none' : 'lax', secure: config.nodeEnv === 'production' });
+  res.clearCookie('refreshToken', { sameSite: config.nodeEnv === 'production' ? 'none' : 'lax', secure: config.nodeEnv === 'production' });
   res.json({ success: true, message: 'Logged out successfully' });
 }));
 
