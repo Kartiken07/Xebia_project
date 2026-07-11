@@ -144,14 +144,13 @@ app.use((err, req, res, next) => {
 // ──────────────────────────────────────────────
 // Start Server
 // ──────────────────────────────────────────────
-if (process.env.NODE_ENV !== 'production') {
-  app.listen(config.port, () => {
-    console.log(`==================================================`);
-    console.log(`🚀 Workforce API Server running on port ${config.port}`);
-    console.log(`🔒 Environment: ${config.nodeEnv}`);
-    console.log(`🌐 CORS Origins: ${config.cors.allowedOrigins.join(', ')}`);
-    console.log(`==================================================`);
-  });
-}
+const PORT = process.env.PORT || config.port;
+app.listen(PORT, () => {
+  console.log(`==================================================`);
+  console.log(`🚀 Workforce API Server running on port ${PORT}`);
+  console.log(`🔒 Environment: ${config.nodeEnv}`);
+  console.log(`🌐 CORS Origins: ${config.cors.allowedOrigins.join(', ')}`);
+  console.log(`==================================================`);
+});
 
 export default app;
